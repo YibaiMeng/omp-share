@@ -54,11 +54,12 @@ npm run dev        # http://127.0.0.1:8787, R2 simulated by Miniflare
 - Upload cap: `MAX_BYTES` in `wrangler.jsonc` (default `1000000`, matching
   `SERVER_MAX_SEALED_BYTES` in the omp client). The client trims to its own fixed 1,000,000-byte cap,
   so lowering this makes larger shares fail with 413; raising it has no effect on stock clients.
-- Allowed country: `ALLOWED_COUNTRY` (default `US`) restricts every request, reads included, to
-  `request.cf.country`. Everything else gets 403 — an upload from abroad fails, and so does a link
-  opened abroad. `/healthz` is gated too; unset the var to disable the gate entirely. This is edge IP
-  geolocation: a US VPN passes and unresolved origins (`XX`) are rejected, so treat it as a
-  throttle, not authentication.
+- Allowed countries: `ALLOWED_COUNTRIES` (default `US,CA`) is a comma-separated list of ISO
+  alpha-2 codes matched against `request.cf.country`. Every request, reads included, must match;
+  everything else gets 403 — an upload from outside fails, and so does a link opened there.
+  `/healthz` is gated too. Unset the var to disable the gate entirely. This is edge IP
+  geolocation: a VPN exiting in an allowed country passes and unresolved origins (`XX`) are
+  rejected, so treat it as a throttle, not authentication.
 - Storage: R2 bucket `omp-share`, binding `SHARES`. Renaming the bucket means updating
   `wrangler.jsonc` and the revoke command below; renaming the binding also means updating
   `Env.SHARES` / `env.SHARES` in `src/index.ts`.
@@ -87,13 +88,13 @@ hex) do not render here. Keep `share.store: blob` (the default).
 - **List shares:** use the Cloudflare dashboard (R2 → `omp-share`); current `wrangler` has no object
   listing command.
 - **Uploads are unauthenticated**, like the upstream server. `POST /s` is limited to
-  `ALLOWED_COUNTRY` (see Configuration); anyone inside that country, or behind a VPN that exits
-  there, can still store up to `MAX_BYTES`. Tighten further with a WAF rate-limit rule on `POST /s`,
-  or put Cloudflare Access in front with an IP/service-token bypass for the machines that run
-  `omp share` — plain Access blocks the CLI's upload and every viewer.
-- **Shares only open inside `ALLOWED_COUNTRY`.** The gate runs before routing, so `/s/<id>`,
-  `/s/<id>/raw` and `/healthz` all answer 403 elsewhere; a recipient abroad needs a VPN exiting in
-  the allowed country.
+  `ALLOWED_COUNTRIES` (see Configuration); anyone inside one of those countries, or behind a VPN
+  that exits there, can still store up to `MAX_BYTES`. Tighten further with a WAF rate-limit rule on
+  `POST /s`, or put Cloudflare Access in front with an IP/service-token bypass for the machines that
+  run `omp share` — plain Access blocks the CLI's upload and every viewer.
+- **Shares only open inside `ALLOWED_COUNTRIES`.** The gate runs before routing, so `/s/<id>`,
+  `/s/<id>/raw` and `/healthz` all answer 403 elsewhere; a recipient outside needs a VPN exiting in
+  an allowed country.
 - Shares never expire on their own; delete objects to remove them.
 - **What the server sees:** the sealed blob, the request path and id, content length, User-Agent and
   client IP, plus request timing in Cloudflare's invocation logs. It never sees plaintext or the key;

@@ -57,11 +57,11 @@ export interface Env {
   /** Optional override of the upload cap in bytes. */
   MAX_BYTES?: string;
   /**
-   * ISO 3166-1 alpha-2 country (e.g. `US`) that every request is restricted
-   * to, matched against the edge's `request.cf.country`. Empty or absent
-   * disables the gate.
+   * ISO 3166-1 alpha-2 countries that every request is restricted to, matched
+   * against the edge's `request.cf.country`. Comma-separated (`"US,CA"`);
+   * empty or absent disables the gate.
    */
-  ALLOWED_COUNTRY?: string;
+  ALLOWED_COUNTRIES?: string;
 }
 
 export default {
@@ -70,7 +70,7 @@ export default {
       // Gate every route, reads included: a link handed to someone abroad must
       // not render either. `request.cf` is authoritative here even on
       // hostnames a zone-level WAF rule cannot see.
-      if (!allowedCountry(request, env)) return text("forbidden", 403);
+      if (!countryAllowed(request, env)) return text("forbidden", 403);
       return await route(request, env);
     } catch (error) {
       console.error("omp-share:", error);
@@ -102,14 +102,32 @@ async function route(request: Request, env: Env): Promise<Response> {
   return new Response(viewerHtml, { headers: VIEWER_HEADERS });
 }
 
+/** Parsed `ALLOWED_COUNTRIES`; the env value is fixed for the life of the isolate. */
+let countryConfig: { raw: string; allowed: ReadonlySet<string> } | undefined;
+
 /**
  * Country gate for every request. `request.cf.country` comes from the edge and
  * is `XX` when it cannot be resolved, so an unknown origin fails closed.
  */
-function allowedCountry(request: Request, env: Env): boolean {
-  const required = env.ALLOWED_COUNTRY?.trim().toUpperCase();
-  if (!required) return true;
-  return request.cf?.country === required;
+function countryAllowed(request: Request, env: Env): boolean {
+  const raw = env.ALLOWED_COUNTRIES?.trim();
+  if (!raw) return true;
+  // `Request.cf` is a union with an index-signature type, so `country` is
+  // `unknown` to the checker even though the edge always sets a string.
+  const country = request.cf?.country;
+  return typeof country === "string" && allowedSet(raw).has(country);
+}
+
+function allowedSet(raw: string): ReadonlySet<string> {
+  if (countryConfig?.raw === raw) return countryConfig.allowed;
+  const allowed = new Set(
+    raw
+      .split(",")
+      .map((code) => code.trim().toUpperCase())
+      .filter((code) => code.length > 0),
+  );
+  countryConfig = { raw, allowed };
+  return allowed;
 }
 
 async function storeShare(request: Request, env: Env): Promise<Response> {
