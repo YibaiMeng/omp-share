@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "omp-share",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-10-01",
+  // `import viewerHtml from "./viewer.html"` resolves to the file text.
+  "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }],
+  "vars": {
+    // Mirrors SERVER_MAX_SEALED_BYTES in packages/coding-agent/src/export/share.ts.
+    "MAX_BYTES": "1000000"
+  },
+  "r2_buckets": [{ "binding": "SHARES", "bucket_name": "omp-share" }],
+  // Keep the workers.dev hostname available even when a deployment adds routes.
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}

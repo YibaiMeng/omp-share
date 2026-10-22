@@ -1,0 +1,22 @@
+{
+  "name": "omp-share",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker implementing the self-hostable omp /share server contract",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:local": "wrangler deploy --config wrangler.local.jsonc",
+    "check": "tsc --noEmit",
+    "build:viewer": "node scripts/build-viewer.mjs"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261022.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.151.3"
+  }
+}
