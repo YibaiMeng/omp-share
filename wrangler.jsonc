@@ -9,7 +9,7 @@
     // Mirrors SERVER_MAX_SEALED_BYTES in packages/coding-agent/src/export/share.ts.
     "MAX_BYTES": "1000000",
     // `POST /s` only accepts uploads geolocated to this country; reads stay open.
-    "UPLOAD_COUNTRY": "US"
+    "ALLOWED_COUNTRY": "US"
   },
   "r2_buckets": [{ "binding": "SHARES", "bucket_name": "omp-share" }],
   // Keep the workers.dev hostname available even when a deployment adds routes.

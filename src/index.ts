@@ -57,16 +57,20 @@ export interface Env {
   /** Optional override of the upload cap in bytes. */
   MAX_BYTES?: string;
   /**
-   * ISO 3166-1 alpha-2 country (e.g. `US`) that `POST /s` is restricted to,
-   * matched against the edge's `request.cf.country`. Empty or absent disables
-   * the gate. Reads are never gated, so links stay open worldwide.
+   * ISO 3166-1 alpha-2 country (e.g. `US`) that every request is restricted
+   * to, matched against the edge's `request.cf.country`. Empty or absent
+   * disables the gate.
    */
-  UPLOAD_COUNTRY?: string;
+  ALLOWED_COUNTRY?: string;
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
+      // Gate every route, reads included: a link handed to someone abroad must
+      // not render either. `request.cf` is authoritative here even on
+      // hostnames a zone-level WAF rule cannot see.
+      if (!allowedCountry(request, env)) return text("forbidden", 403);
       return await route(request, env);
     } catch (error) {
       console.error("omp-share:", error);
@@ -85,9 +89,6 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (pathname === "/s" || pathname === "/s/") {
     if (request.method !== "POST") return methodNotAllowed("POST");
-    // Uploads are the only unauthenticated write path; geo-gate them here so
-    // the rule also covers hostnames a zone-level WAF rule cannot see.
-    if (!uploadAllowed(request, env)) return text("forbidden", 403);
     return storeShare(request, env);
   }
 
@@ -102,11 +103,11 @@ async function route(request: Request, env: Env): Promise<Response> {
 }
 
 /**
- * Country gate for `POST /s`. `request.cf.country` comes from the edge and is
- * `XX` when it cannot be resolved, so an unknown origin fails closed.
+ * Country gate for every request. `request.cf.country` comes from the edge and
+ * is `XX` when it cannot be resolved, so an unknown origin fails closed.
  */
-function uploadAllowed(request: Request, env: Env): boolean {
-  const required = env.UPLOAD_COUNTRY?.trim().toUpperCase();
+function allowedCountry(request: Request, env: Env): boolean {
+  const required = env.ALLOWED_COUNTRY?.trim().toUpperCase();
   if (!required) return true;
   return request.cf?.country === required;
 }
