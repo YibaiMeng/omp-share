@@ -39,8 +39,9 @@ Open the printed link (or paste it whole — the `#key` fragment is required).
 To serve a custom domain, keep deployment-specific settings out of git: copy `wrangler.jsonc` to
 `wrangler.local.jsonc` (ignored), add your `routes`, and run `npm run deploy:local`. `wrangler` fails
 if the declared zone is not in the logged-in account. The viewer works at any origin because it
-fetches `/s/<id>/raw` relative to itself; `"workers_dev": true` keeps the workers.dev hostname alive
-when routes are present.
+fetches `/s/<id>/raw` relative to itself. `"workers_dev": false` is deliberate: the
+`workers.dev` hostname is off the zone, so no WAF rule or DNS setting covers it, and the upload gate
+should be the last thing standing. Flip it to `true` only for a deployment without a custom domain.
 
 ### Local development
 
@@ -53,6 +54,11 @@ npm run dev        # http://127.0.0.1:8787, R2 simulated by Miniflare
 - Upload cap: `MAX_BYTES` in `wrangler.jsonc` (default `1000000`, matching
   `SERVER_MAX_SEALED_BYTES` in the omp client). The client trims to its own fixed 1,000,000-byte cap,
   so lowering this makes larger shares fail with 413; raising it has no effect on stock clients.
+- Upload country: `UPLOAD_COUNTRY` (default `US`) restricts `POST /s` to requests whose
+  `request.cf.country` matches. Everything else gets 403; reads (`GET /s/<id>`, `/s/<id>/raw`,
+  `/healthz`) are not gated, so links open anywhere. Unset the var to disable the gate. This is edge
+  IP geolocation: a US VPN passes and unresolved origins (`XX`) are rejected, so treat it as a
+  throttle, not authentication.
 - Storage: R2 bucket `omp-share`, binding `SHARES`. Renaming the bucket means updating
   `wrangler.jsonc` and the revoke command below; renaming the binding also means updating
   `Env.SHARES` / `env.SHARES` in `src/index.ts`.
@@ -80,10 +86,11 @@ hex) do not render here. Keep `share.store: blob` (the default).
   with `cache-control: no-store`, so a deleted share 404s immediately.
 - **List shares:** use the Cloudflare dashboard (R2 → `omp-share`); current `wrangler` has no object
   listing command.
-- **Uploads are unauthenticated**, like the upstream server. Anyone who can reach `POST /s` can
-  store up to `MAX_BYTES`. To restrict it, add a WAF rate-limit rule on `POST /s`, or put Cloudflare
-  Access in front with an IP/service-token bypass for the machines that run `omp share` — plain
-  Access blocks the CLI's upload and every viewer.
+- **Uploads are unauthenticated**, like the upstream server. `POST /s` is limited to
+  `UPLOAD_COUNTRY` (see Configuration); anyone inside that country, or behind a VPN that exits
+  there, can still store up to `MAX_BYTES`. Tighten further with a WAF rate-limit rule on `POST /s`,
+  or put Cloudflare Access in front with an IP/service-token bypass for the machines that run
+  `omp share` — plain Access blocks the CLI's upload and every viewer.
 - Shares never expire on their own; delete objects to remove them.
 - **What the server sees:** the sealed blob, the request path and id, content length, User-Agent and
   client IP, plus request timing in Cloudflare's invocation logs. It never sees plaintext or the key;

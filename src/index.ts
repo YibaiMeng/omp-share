@@ -56,6 +56,12 @@ export interface Env {
   SHARES: R2Bucket;
   /** Optional override of the upload cap in bytes. */
   MAX_BYTES?: string;
+  /**
+   * ISO 3166-1 alpha-2 country (e.g. `US`) that `POST /s` is restricted to,
+   * matched against the edge's `request.cf.country`. Empty or absent disables
+   * the gate. Reads are never gated, so links stay open worldwide.
+   */
+  UPLOAD_COUNTRY?: string;
 }
 
 export default {
@@ -79,6 +85,9 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (pathname === "/s" || pathname === "/s/") {
     if (request.method !== "POST") return methodNotAllowed("POST");
+    // Uploads are the only unauthenticated write path; geo-gate them here so
+    // the rule also covers hostnames a zone-level WAF rule cannot see.
+    if (!uploadAllowed(request, env)) return text("forbidden", 403);
     return storeShare(request, env);
   }
 
@@ -90,6 +99,16 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (match[2]) return serveBlob(env, id);
   // The viewer fetches `/s/<id>/raw` itself and reports a missing share.
   return new Response(viewerHtml, { headers: VIEWER_HEADERS });
+}
+
+/**
+ * Country gate for `POST /s`. `request.cf.country` comes from the edge and is
+ * `XX` when it cannot be resolved, so an unknown origin fails closed.
+ */
+function uploadAllowed(request: Request, env: Env): boolean {
+  const required = env.UPLOAD_COUNTRY?.trim().toUpperCase();
+  if (!required) return true;
+  return request.cf?.country === required;
 }
 
 async function storeShare(request: Request, env: Env): Promise<Response> {
